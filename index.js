@@ -3,10 +3,25 @@ const http = require("http");
 const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
 const cors = require("cors");
 
-app.use(cors());
+// Configure CORS
+app.use(
+  cors({
+    origin: "https://metrixcolorchange.netlify.app", // Replace with the frontend URL
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
+    credentials: true,
+  })
+);
+
+// Initialize Socket.io with CORS options
+const io = new Server(server, {
+  cors: {
+    origin: "https://metrixcolorchange.netlify.app", // Replace with your frontend URL
+    methods: ["GET", "POST"],
+  },
+});
 
 app.get("/", (req, res) => {
   res.send("Server is running");
