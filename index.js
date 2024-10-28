@@ -1,9 +1,13 @@
 const express = require("express");
 const http = require("http");
-const { Server } = require("socket.io");
-const app = express();
-const server = http.createServer(app);
+const WebSocket = require("ws");
 const cors = require("cors");
+
+const app = express();
+app.use(cors());
+
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
 // Configure CORS
 app.use(
@@ -15,32 +19,22 @@ app.use(
   })
 );
 
-// Initialize Socket.io with CORS options
-const io = new Server(server, {
-  cors: {
-    origin: "https://metrixcolorchange.netlify.app", // Replace with your frontend URL
-    methods: ["GET", "POST"],
-  },
-});
+wss.on("connection", (ws) => {
+  ws.on("message", (message) => {
+    const parsedMessage = JSON.parse(message);
+    const { type, data } = parsedMessage;
 
-app.get("/", (req, res) => {
-  res.send("Server is running");
-});
-
-io.on("connection", (socket) => {
-  console.log("A user connected: " + socket.id);
-
-  socket.on("join-room", (roomId, userId) => {
-    socket.join(roomId);
-    socket.to(roomId).emit("user-connected", userId);
+    // Broadcast to all connected clients except the sender
+    wss.clients.forEach((client) => {
+      if (client !== ws && client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type, data }));
+      }
+    });
   });
 
-  socket.on("disconnect", () => {
-    console.log("User disconnected: " + socket.id);
-  });
+  ws.send(JSON.stringify({ message: "Connected to WebRTC signaling server!" }));
 });
 
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+server.listen(5000, () => {
+  console.log("WebSocket signaling server running on port 5000");
 });
