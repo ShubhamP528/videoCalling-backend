@@ -1,40 +1,57 @@
 const express = require("express");
 const http = require("http");
-const WebSocket = require("ws");
+const socketIo = require("socket.io");
 const cors = require("cors");
+const connectDB = require("./config/db");
+const userRoutes = require("./routes/user");
+require("dotenv").config();
 
 const app = express();
-app.use(cors());
-
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const io = socketIo(server, {
+  cors: {
+    origin: ["http://localhost:3001", "https://metrixcolorchange.netlify.app"], // Allow requests from this origin
+    methods: ["GET", "POST"],
+    credentials: true, // Allow credentials (if needed)
+  },
+});
 
-// Configure CORS
+// Connect to DB
+connectDB();
+
+// Enable CORS for Express
 app.use(
   cors({
-    origin: "https://metrixcolorchange.netlify.app", // Replace with the frontend URL
+    origin: ["http://localhost:3001", "https://metrixcolorchange.netlify.app"],
     methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type"],
     credentials: true,
   })
 );
 
-wss.on("connection", (ws) => {
-  ws.on("message", (message) => {
-    const parsedMessage = JSON.parse(message);
-    const { type, data } = parsedMessage;
+app.use(express.json());
+app.use("/api/users", userRoutes);
 
-    // Broadcast to all connected clients except the sender
-    wss.clients.forEach((client) => {
-      if (client !== ws && client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({ type, data }));
-      }
-    });
+io.on("connection", (socket) => {
+  console.log("A user connected");
+
+  socket.on("disconnect", () => {
+    console.log("User disconnected");
   });
 
-  ws.send(JSON.stringify({ message: "Connected to WebRTC signaling server!" }));
+  socket.on("offer", (offer) => {
+    socket.broadcast.emit("offer", offer);
+  });
+
+  socket.on("answer", (answer) => {
+    socket.broadcast.emit("answer", answer);
+  });
+
+  socket.on("ice-candidate", (candidate) => {
+    socket.broadcast.emit("ice-candidate", candidate);
+  });
 });
 
-server.listen(5000, () => {
-  console.log("WebSocket signaling server running on port 5000");
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
