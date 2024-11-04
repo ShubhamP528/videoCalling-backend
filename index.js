@@ -1,41 +1,70 @@
 const express = require("express");
-const { Server } = require("socket.io");
+const http = require("http");
+const socketIo = require("socket.io");
 
-// Create an Express application
+const cors = require("cors");
+
 const app = express();
-const PORT = 8000;
+const server = http.createServer(app);
 
-// Middleware to parse JSON requests
-app.use(express.json());
+const allowedOrigins = [
+  "https://movies-app-frontend-git-main-shubhams-projects-9fdff750.vercel.app",
+  "https://movies-app-frontend-shubhams-projects-9fdff750.vercel.app",
+  "http://localhost:1234",
+  "http://localhost:3001",
+  "https://syncmovieapp.vercel.app",
+  "http://localhost:8080/",
+  "https://movies-app-backend-two.vercel.app/",
+  "https://syncmovie-watch.netlify.app",
+  "*",
+];
 
-// Initialize Socket.IO with the Express server
-const httpServer = require("http").createServer(app);
-const io = new Server(httpServer, {
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+
+const io = socketIo(server, {
   cors: {
-    origin: "*", // Adjust this for production
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
   },
 });
 
-// Maps to manage socket connections
+// const { Server } = require("socket.io");
+
+// const io = new Server(8000, {
+//   cors: true,
+// });
+
 const emailToSocketIdMap = new Map();
 const socketidToEmailMap = new Map();
 
-// WebSocket connection handling
 io.on("connection", (socket) => {
   console.log(`Socket Connected`, socket.id);
-
   socket.on("room:join", (data) => {
     const { email, room } = data;
     emailToSocketIdMap.set(email, socket.id);
     socketidToEmailMap.set(socket.id, email);
-    socket.join(room);
     io.to(room).emit("user:joined", { email, id: socket.id });
+    socket.join(room);
     io.to(socket.id).emit("room:join", data);
   });
 
   socket.on("user:call", ({ to, offer }) => {
-    io.to(to).emit("incoming:call", { from: socket.id, offer });
+    io.to(to).emit("incomming:call", { from: socket.id, offer });
   });
 
   socket.on("call:accepted", ({ to, ans }) => {
@@ -53,12 +82,5 @@ io.on("connection", (socket) => {
   });
 });
 
-// Example HTTP route
-app.get("/api/status", (req, res) => {
-  res.json({ status: "Server is running" });
-});
-
-// Start the HTTP server
-httpServer.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
