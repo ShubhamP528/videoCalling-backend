@@ -1,57 +1,38 @@
-const express = require("express");
-const http = require("http");
-const socketIo = require("socket.io");
-const cors = require("cors");
-const connectDB = require("./config/db");
-const userRoutes = require("./routes/user");
-require("dotenv").config();
+const { Server } = require("socket.io");
 
-const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: ["http://localhost:3001", "https://metrixcolorchange.netlify.app"], // Allow requests from this origin
-    methods: ["GET", "POST"],
-    credentials: true, // Allow credentials (if needed)
-  },
+const io = new Server(8000, {
+  cors: true,
 });
 
-// Connect to DB
-connectDB();
-
-// Enable CORS for Express
-app.use(
-  cors({
-    origin: ["http://localhost:3001", "https://metrixcolorchange.netlify.app"],
-    methods: ["GET", "POST"],
-    credentials: true,
-  })
-);
-
-app.use(express.json());
-app.use("/api/users", userRoutes);
+const emailToSocketIdMap = new Map();
+const socketidToEmailMap = new Map();
 
 io.on("connection", (socket) => {
-  console.log("A user connected");
-
-  socket.on("disconnect", () => {
-    console.log("User disconnected");
+  console.log(`Socket Connected`, socket.id);
+  socket.on("room:join", (data) => {
+    const { email, room } = data;
+    emailToSocketIdMap.set(email, socket.id);
+    socketidToEmailMap.set(socket.id, email);
+    io.to(room).emit("user:joined", { email, id: socket.id });
+    socket.join(room);
+    io.to(socket.id).emit("room:join", data);
   });
 
-  socket.on("offer", (offer) => {
-    socket.broadcast.emit("offer", offer);
+  socket.on("user:call", ({ to, offer }) => {
+    io.to(to).emit("incomming:call", { from: socket.id, offer });
   });
 
-  socket.on("answer", (answer) => {
-    socket.broadcast.emit("answer", answer);
+  socket.on("call:accepted", ({ to, ans }) => {
+    io.to(to).emit("call:accepted", { from: socket.id, ans });
   });
 
-  socket.on("ice-candidate", (candidate) => {
-    socket.broadcast.emit("ice-candidate", candidate);
+  socket.on("peer:nego:needed", ({ to, offer }) => {
+    console.log("peer:nego:needed", offer);
+    io.to(to).emit("peer:nego:needed", { from: socket.id, offer });
   });
-});
 
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  socket.on("peer:nego:done", ({ to, ans }) => {
+    console.log("peer:nego:done", ans);
+    io.to(to).emit("peer:nego:final", { from: socket.id, ans });
+  });
 });
